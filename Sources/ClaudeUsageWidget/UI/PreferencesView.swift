@@ -28,7 +28,7 @@ struct PreferencesView: View {
     @ObservedObject var preferences: Preferences
     let manualTokenStore: ManualTokenStore
     @State private var draftToken: String = ""
-    @State private var saveConfirmation: String = ""
+    @State private var tokenSaved: Bool = false
     var onDisplayChanged: () -> Void
     var onIntervalChanged: () -> Void
 
@@ -84,21 +84,30 @@ struct PreferencesView: View {
                     ForEach(CredentialMode.allCases) { Text($0.label).tag($0) }
                 }
                 if preferences.credentialMode == .manual {
+                    HStack(spacing: 5) {
+                        Image(systemName: tokenSaved ? "checkmark.circle.fill" : "exclamationmark.circle")
+                            .foregroundStyle(tokenSaved ? Color.green : Color.secondary)
+                        Text(tokenSaved ? "Token saved" : "No token saved")
+                            .font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
                     Text("Run `claude setup-token` in Terminal, then paste the token below.")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
-                    SecureField("Paste token", text: $draftToken)
+                    SecureField(tokenSaved ? "Paste a new token to replace" : "Paste token",
+                                text: $draftToken)
                     HStack {
                         Button("Save token") {
-                            do {
-                                try manualTokenStore.save(token: draftToken)
+                            if (try? manualTokenStore.save(token: draftToken)) != nil {
                                 draftToken = ""
-                                saveConfirmation = "Saved."
-                            } catch {
-                                saveConfirmation = "Token cannot be empty."
+                                tokenSaved = true
                             }
                         }
-                        Text(saveConfirmation)
-                            .font(.system(size: 10)).foregroundStyle(.secondary)
+                        .disabled(draftToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        if tokenSaved {
+                            Button("Clear") {
+                                manualTokenStore.clear()
+                                tokenSaved = false
+                            }
+                        }
                     }
                 }
             }
@@ -117,7 +126,10 @@ struct PreferencesView: View {
         }
         .padding(20)
         .frame(width: 300)
-        .onAppear { preferences.launchAtLogin = LoginItem.isEnabled }
+        .onAppear {
+            preferences.launchAtLogin = LoginItem.isEnabled
+            tokenSaved = manualTokenStore.hasToken
+        }
     }
 
     private func swatch(_ color: Color) -> some View {
