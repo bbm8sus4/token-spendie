@@ -153,6 +153,7 @@ final class MenuBarController: NSObject {
         panel.setFrame(NSRect(x: x, y: y, width: size.width, height: size.height), display: true)
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
+        button.highlight(true)
         store.setPanelVisible(true, source: .menuBar)
 
         // Dismiss when the user clicks anywhere outside the panel.
@@ -168,6 +169,7 @@ final class MenuBarController: NSObject {
             NSEvent.removeMonitor(clickMonitor)
             self.clickMonitor = nil
         }
+        statusItem?.button?.highlight(false)
         panel?.orderOut(nil)
         guard panel != nil else { return }
         panel = nil
