@@ -12,11 +12,11 @@
 
 ## Verified facts (from Claude Code 2.1.146 binary)
 
-These were extracted from the installed Claude Code binary and remove the open questions the design spec flagged. Treat them as inputs, but Task 1 confirms them live before code depends on them.
+These were extracted from the installed Claude Code binary and confirmed live by Task 1's probe.
 
 - **Usage endpoint:** `GET https://api.anthropic.com/api/oauth/usage`, headers `Authorization: Bearer <accessToken>` and `Accept: application/json`. Claude Code's internal name is `fetchUtilization`; it retries and, on `401`, refreshes the token and retries.
-- **Response shape:** keys `five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet`; each value carries `utilization` and `resets_at`. `utilization` scale (0–1 fraction vs 0–100) is confirmed in Task 1.
-- **Keychain:** generic-password item, service `Claude Code-credentials`, in the login keychain. Value is JSON: `{"claudeAiOauth":{"accessToken":"...","refreshToken":"...","expiresAt":<number>,...}}`.
+- **Response shape (confirmed):** keys `five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet` (and other internal windows ignored by this app); each value is `{utilization, resets_at}` or JSON `null`. `utilization` is a **percentage (0–100)**. `resets_at` is ISO 8601 with **microsecond** precision, e.g. `2026-05-21T10:20:00.431249+00:00`. The `anthropic-ratelimit-unified-*` headers are **not** present on this endpoint.
+- **Keychain (confirmed):** generic-password item, service `Claude Code-credentials`, in the login keychain. Value is JSON: `{"claudeAiOauth":{"accessToken":"...","refreshToken":"...","expiresAt":<ms>,...}}`. `expiresAt` is epoch **milliseconds**.
 - **Token strategy:** the widget never refreshes or rewrites the shared token (that would rotate Claude Code's refresh token and break it). On `401` it re-reads the Keychain once — Claude Code refreshes the token during normal use — and otherwise shows a "login expired" state.
 
 ---
@@ -43,8 +43,7 @@ claude-widget/
 │   │   ├── KeychainReader.swift              # real CredentialStore over the macOS Keychain
 │   │   ├── UsageDecoder.swift                # /api/oauth/usage JSON -> UsageSnapshot
 │   │   ├── UsageProvider.swift               # protocol + HTTPTransport typealias
-│   │   ├── EndpointUsageProvider.swift       # Approach 1 (primary)
-│   │   └── HeaderUsageProvider.swift         # Approach 2 (fallback)
+│   │   └── EndpointUsageProvider.swift       # /api/oauth/usage implementation
 │   ├── Store/
 │   │   ├── SnapshotCache.swift               # last snapshot persisted to disk
 │   │   ├── Preferences.swift                 # UserDefaults-backed settings
@@ -578,7 +577,7 @@ Decodes the `/api/oauth/usage` JSON response into a `UsageSnapshot`. Uses `JSONS
 - Create: `Sources/ClaudeUsageWidget/Data/UsageDecoder.swift`
 - Create: `Tests/ClaudeUsageWidgetTests/UsageDecoderTests.swift`
 
-> If Task 1's probe showed a different response shape, adjust the `window(_:)` lookups and key names below to match before writing the test fixtures.
+> Confirmed by Task 1's probe: each window is `{utilization, resets_at}`; `utilization` is a percentage (0–100); `resets_at` is ISO 8601 with microsecond precision (e.g. `2026-05-21T10:20:00.431249+00:00`); windows that do not apply are sent as JSON `null`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -589,39 +588,52 @@ import XCTest
 final class UsageDecoderTests: XCTestCase {
     let fetchedAt = Date(timeIntervalSince1970: 1_700_000_000)
 
-    func testDecodesFractionUtilization() throws {
+    func testDecodesPercentUtilization() throws {
+        // Real endpoint payload shape: utilization is a percentage; resets_at has microseconds.
         let json = """
         {
-          "five_hour":      {"utilization": 0.52, "resets_at": "2026-05-21T19:00:00Z"},
-          "seven_day":      {"utilization": 0.74, "resets_at": "2026-05-25T07:00:00Z"},
-          "seven_day_opus": {"utilization": 0.91, "resets_at": "2026-05-25T07:00:00Z"}
+          "five_hour":      {"utilization": 44.0, "resets_at": "2026-05-21T10:20:00.431249+00:00"},
+          "seven_day":      {"utilization": 8.0,  "resets_at": "2026-05-26T08:00:00.431273+00:00"},
+          "seven_day_opus": {"utilization": 91.0, "resets_at": "2026-05-26T08:00:00.431280+00:00"}
         }
         """
         let snapshot = try UsageDecoder.decode(Data(json.utf8), fetchedAt: fetchedAt)
-        XCTAssertEqual(snapshot.session.percent, 52, accuracy: 0.001)
-        XCTAssertEqual(snapshot.weekly.percent, 74, accuracy: 0.001)
+        XCTAssertEqual(snapshot.session.percent, 44, accuracy: 0.001)
+        XCTAssertEqual(snapshot.weekly.percent, 8, accuracy: 0.001)
         XCTAssertEqual(snapshot.modelWeeklies.count, 1)
         XCTAssertEqual(snapshot.modelWeeklies.first?.model, "Opus")
         XCTAssertEqual(snapshot.modelWeeklies.first?.window.percent ?? 0, 91, accuracy: 0.001)
         XCTAssertEqual(snapshot.fetchedAt, fetchedAt)
-        XCTAssertNotNil(snapshot.session.resetsAt)
     }
 
-    func testDecodesPercentUtilization() throws {
+    func testParsesMicrosecondResetTime() throws {
+        let json = #"{"five_hour":{"utilization":1,"resets_at":"2026-05-21T10:20:00.431249+00:00"},"seven_day":{"utilization":1}}"#
+        let snapshot = try UsageDecoder.decode(Data(json.utf8), fetchedAt: fetchedAt)
+        let resetsAt = try XCTUnwrap(snapshot.session.resetsAt)
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let parts = utc.dateComponents([.year, .month, .day, .hour, .minute], from: resetsAt)
+        XCTAssertEqual(parts.year, 2026)
+        XCTAssertEqual(parts.month, 5)
+        XCTAssertEqual(parts.day, 21)
+        XCTAssertEqual(parts.hour, 10)
+        XCTAssertEqual(parts.minute, 20)
+    }
+
+    func testNullWindowIsOmitted() throws {
+        // The endpoint sends explicit JSON null for windows that do not apply.
         let json = """
-        {"five_hour": {"utilization": 40}, "seven_day": {"utilization": 80}}
+        {"five_hour":{"utilization":5},"seven_day":{"utilization":6},"seven_day_opus":null,"seven_day_sonnet":{"utilization":7}}
         """
         let snapshot = try UsageDecoder.decode(Data(json.utf8), fetchedAt: fetchedAt)
-        XCTAssertEqual(snapshot.session.percent, 40, accuracy: 0.001)
-        XCTAssertEqual(snapshot.weekly.percent, 80, accuracy: 0.001)
-        XCTAssertTrue(snapshot.modelWeeklies.isEmpty)
+        XCTAssertEqual(snapshot.modelWeeklies.map(\.model), ["Sonnet"])
     }
 
-    func testDecodesSonnetWeekly() throws {
+    func testDecodesOpusAndSonnetWeekly() throws {
         let json = """
         {
-          "five_hour": {"utilization": 0.1}, "seven_day": {"utilization": 0.2},
-          "seven_day_opus": {"utilization": 0.3}, "seven_day_sonnet": {"utilization": 0.4}
+          "five_hour": {"utilization": 1}, "seven_day": {"utilization": 2},
+          "seven_day_opus": {"utilization": 3}, "seven_day_sonnet": {"utilization": 4}
         }
         """
         let snapshot = try UsageDecoder.decode(Data(json.utf8), fetchedAt: fetchedAt)
@@ -629,7 +641,7 @@ final class UsageDecoderTests: XCTestCase {
     }
 
     func testMissingRequiredWindowThrowsBadResponse() {
-        let json = #"{"five_hour": {"utilization": 0.5}}"#
+        let json = #"{"five_hour": {"utilization": 5}}"#
         XCTAssertThrowsError(try UsageDecoder.decode(Data(json.utf8), fetchedAt: fetchedAt)) { error in
             XCTAssertEqual(error as? ProviderError, .badResponse)
         }
@@ -661,14 +673,14 @@ enum UsageDecoder {
         }
 
         func window(_ key: String) -> UsageWindow? {
+            // A window key may be absent or an explicit JSON null; both mean "not present".
             guard let raw = root[key] as? [String: Any],
                   let utilization = (raw["utilization"] as? NSNumber)?.doubleValue else {
                 return nil
             }
-            // Normalize: fractions (0–1) become percentages; values already > 1 are left as-is.
-            let percent = utilization <= 1.0 ? utilization * 100.0 : utilization
+            // The endpoint reports utilization directly as a percentage (0–100).
             let resetsAt = (raw["resets_at"] as? String).flatMap(parseDate)
-            return UsageWindow(percent: percent, resetsAt: resetsAt)
+            return UsageWindow(percent: utilization, resetsAt: resetsAt)
         }
 
         guard let session = window("five_hour"), let weekly = window("seven_day") else {
@@ -687,13 +699,15 @@ enum UsageDecoder {
                              modelWeeklies: modelWeeklies, fetchedAt: fetchedAt)
     }
 
+    /// Parses the endpoint's ISO 8601 timestamps. The endpoint emits microsecond
+    /// precision (e.g. "2026-05-21T10:20:00.431249+00:00"), which `ISO8601DateFormatter`
+    /// will not accept, so the fractional-seconds component is stripped before parsing.
     static func parseDate(_ string: String) -> Date? {
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = withFraction.date(from: string) { return date }
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: string)
+        let withoutFraction = string.replacingOccurrences(
+            of: #"\.\d+"#, with: "", options: .regularExpression)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: withoutFraction)
     }
 }
 ```
@@ -712,14 +726,15 @@ git commit -m "Add usage response decoder"
 
 ---
 
-## Task 7: Usage providers (Endpoint + Header fallback)
+## Task 7: Usage provider
 
-The `UsageProvider` protocol plus both implementations. HTTP is injected as a closure so providers are unit-testable without real network.
+The `UsageProvider` protocol and its endpoint implementation. HTTP is injected as a closure so the provider is unit-testable without real network.
+
+> **Plan change (from Task 1):** the plan originally included a second `HeaderUsageProvider` reading `anthropic-ratelimit-unified-*` response headers as a fallback. Task 1's probe proved those headers are absent from `/api/oauth/usage`, so that concrete fallback is dropped. The `UsageProvider` protocol still provides the swappable seam the spec asked for — a future fallback can be dropped in without touching callers.
 
 **Files:**
 - Create: `Sources/ClaudeUsageWidget/Data/UsageProvider.swift`
 - Create: `Sources/ClaudeUsageWidget/Data/EndpointUsageProvider.swift`
-- Create: `Sources/ClaudeUsageWidget/Data/HeaderUsageProvider.swift`
 - Create: `Tests/ClaudeUsageWidgetTests/UsageProviderTests.swift`
 
 - [ ] **Step 1: Write `UsageProvider.swift` (protocol + transport)**
@@ -756,7 +771,7 @@ protocol UsageProvider {
 ```swift
 import Foundation
 
-/// Approach 1 (primary): the dedicated `/api/oauth/usage` endpoint.
+/// Fetches usage from the dedicated `/api/oauth/usage` endpoint.
 struct EndpointUsageProvider: UsageProvider {
     private let transport: HTTPTransport
     private let now: () -> Date
@@ -788,80 +803,27 @@ struct EndpointUsageProvider: UsageProvider {
 }
 ```
 
-- [ ] **Step 3: Write `HeaderUsageProvider.swift`**
-
-```swift
-import Foundation
-
-/// Approach 2 (fallback): derive usage from `anthropic-ratelimit-unified-*` response headers.
-/// Coarser than the endpoint — it yields a single session figure and no weekly detail —
-/// but it is a stable, swappable substitute if the endpoint becomes unreliable.
-struct HeaderUsageProvider: UsageProvider {
-    private let transport: HTTPTransport
-    private let now: () -> Date
-    private let url = URL(string: "https://api.anthropic.com/api/oauth/usage")!
-
-    init(transport: @escaping HTTPTransport = DefaultTransport.shared,
-         now: @escaping () -> Date = Date.init) {
-        self.transport = transport
-        self.now = now
-    }
-
-    func fetchUsage(accessToken: String) async throws -> UsageSnapshot {
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("ClaudeUsageWidget/1.0", forHTTPHeaderField: "User-Agent")
-
-        let (_, response) = try await transport(request)
-        if response.statusCode == 401 { throw ProviderError.unauthorized }
-
-        guard let statusRaw = response.value(forHTTPHeaderField: "anthropic-ratelimit-unified-status"),
-              let percent = Self.percent(fromStatus: statusRaw) else {
-            throw ProviderError.badResponse
-        }
-        let resetsAt = response.value(forHTTPHeaderField: "anthropic-ratelimit-unified-reset")
-            .flatMap { Double($0) }
-            .map { Date(timeIntervalSince1970: $0) }
-        let window = UsageWindow(percent: percent, resetsAt: resetsAt)
-        // Headers expose only one unified figure; mirror it as the session window.
-        return UsageSnapshot(session: window, weekly: window,
-                             modelWeeklies: [], fetchedAt: now())
-    }
-
-    /// Maps the textual unified status to a coarse percentage.
-    static func percent(fromStatus raw: String) -> Double? {
-        switch raw.lowercased() {
-        case "allowed", "ok": return 25
-        case "allowed_warning", "warning", "approaching": return 80
-        case "rejected", "blocked", "exceeded": return 100
-        default: return Double(raw)  // tolerate a numeric status if one is sent
-        }
-    }
-}
-```
-
-- [ ] **Step 4: Write the failing test**
+- [ ] **Step 3: Write the failing test**
 
 ```swift
 import XCTest
 @testable import ClaudeUsageWidget
 
 final class UsageProviderTests: XCTestCase {
-    private func http(_ status: Int, headers: [String: String] = [:]) -> HTTPURLResponse {
+    private func http(_ status: Int) -> HTTPURLResponse {
         HTTPURLResponse(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!,
-                        statusCode: status, httpVersion: nil, headerFields: headers)!
+                        statusCode: status, httpVersion: nil, headerFields: [:])!
     }
 
     func testEndpointProviderDecodes200() async throws {
-        let body = Data(#"{"five_hour":{"utilization":0.5},"seven_day":{"utilization":0.6}}"#.utf8)
+        let body = Data(#"{"five_hour":{"utilization":50},"seven_day":{"utilization":60}}"#.utf8)
         let provider = EndpointUsageProvider(
             transport: { _ in (body, self.http(200)) },
             now: { Date(timeIntervalSince1970: 42) }
         )
         let snapshot = try await provider.fetchUsage(accessToken: "tok")
         XCTAssertEqual(snapshot.session.percent, 50, accuracy: 0.001)
+        XCTAssertEqual(snapshot.weekly.percent, 60, accuracy: 0.001)
         XCTAssertEqual(snapshot.fetchedAt, Date(timeIntervalSince1970: 42))
     }
 
@@ -877,22 +839,14 @@ final class UsageProviderTests: XCTestCase {
 
     func testEndpointProviderSendsBearerHeader() async throws {
         var captured: URLRequest?
-        let body = Data(#"{"five_hour":{"utilization":0.1},"seven_day":{"utilization":0.1}}"#.utf8)
+        let body = Data(#"{"five_hour":{"utilization":10},"seven_day":{"utilization":10}}"#.utf8)
         let provider = EndpointUsageProvider(transport: { request in
             captured = request
             return (body, self.http(200))
         })
         _ = try await provider.fetchUsage(accessToken: "secret-token")
         XCTAssertEqual(captured?.value(forHTTPHeaderField: "Authorization"), "Bearer secret-token")
-    }
-
-    func testHeaderProviderReadsUnifiedStatus() async throws {
-        let provider = HeaderUsageProvider(
-            transport: { _ in (Data(), self.http(200, headers: ["anthropic-ratelimit-unified-status": "allowed_warning"])) },
-            now: { Date(timeIntervalSince1970: 7) }
-        )
-        let snapshot = try await provider.fetchUsage(accessToken: "tok")
-        XCTAssertEqual(snapshot.session.percent, 80, accuracy: 0.001)
+        XCTAssertEqual(captured?.value(forHTTPHeaderField: "Accept"), "application/json")
     }
 
     private func assertThrows(_ provider: UsageProvider, _ expected: ProviderError,
@@ -907,16 +861,16 @@ final class UsageProviderTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [ ] **Step 4: Run the test to verify it passes**
 
 Run: `swift test --filter UsageProviderTests`
-Expected: PASS (the implementations from Steps 1–3 are already in place).
+Expected: PASS (the implementations from Steps 1–2 are already in place).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/ClaudeUsageWidget/Data/UsageProvider.swift Sources/ClaudeUsageWidget/Data/EndpointUsageProvider.swift Sources/ClaudeUsageWidget/Data/HeaderUsageProvider.swift Tests/ClaudeUsageWidgetTests/UsageProviderTests.swift
-git commit -m "Add endpoint and header usage providers"
+git add Sources/ClaudeUsageWidget/Data/UsageProvider.swift Sources/ClaudeUsageWidget/Data/EndpointUsageProvider.swift Tests/ClaudeUsageWidgetTests/UsageProviderTests.swift
+git commit -m "Add endpoint usage provider"
 ```
 
 ---
@@ -2353,7 +2307,10 @@ git commit -m "Add packaging, icon generation, and README"
 - Build, packaging, sharing → Task 18.
 - Testing (pure-logic unit tests, protocol-mocked store) → Tasks 3–11.
 
-**Deviation from spec (intentional, noted for review):** the spec's design showed a single "Weekly · Opus" row. The Claude Code binary revealed the endpoint also returns `seven_day_sonnet`, so the model and `DetailPanelView` render model-specific weekly rows generically (Opus and/or Sonnet, whichever are present). This honors the spec's rule — "the model-specific row appears only if reported" — and costs nothing extra.
+**Deviations from spec (intentional, noted for review):**
+
+1. The spec's design showed a single "Weekly · Opus" row. The Claude Code binary revealed the endpoint also returns `seven_day_sonnet`, so the model and `DetailPanelView` render model-specific weekly rows generically (Opus and/or Sonnet, whichever are present). This honors the spec's rule — "the model-specific row appears only if reported" — and costs nothing extra.
+2. The spec's data layer included a header-based fallback provider (Approach 2). Task 1's probe proved the `anthropic-ratelimit-unified-*` headers are absent from `/api/oauth/usage`, so the concrete `HeaderUsageProvider` is dropped (Task 7). The `UsageProvider` protocol remains as the swappable seam the spec actually required, so a working fallback can still be added later without touching callers.
 
 **Placeholder scan:** no `TBD`/`TODO`/"handle edge cases" — every step has complete code or an exact command.
 
