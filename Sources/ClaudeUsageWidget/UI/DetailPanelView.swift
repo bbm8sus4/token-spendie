@@ -6,9 +6,10 @@ struct UsageBarRow: View {
     let subtitle: String
     let window: UsageWindow
     let resetLine: String
-    var dimmed: Bool = false
+    var theme: Theme
 
     private var level: UsageLevel { UsageLevel.forPercent(window.percent) }
+    private var tierColor: Color { theme.color(for: level) }
     private var fraction: CGFloat { min(max(window.percent / 100, 0), 1) }
 
     var body: some View {
@@ -18,13 +19,13 @@ struct UsageBarRow: View {
                 Spacer()
                 Text("\(Int(window.percent.rounded()))%")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(dimmed ? Color.secondary : level.color)
+                    .foregroundStyle(tierColor)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.12))
                     Capsule()
-                        .fill(dimmed ? Color.secondary : level.color)
+                        .fill(tierColor)
                         .frame(width: geo.size.width * fraction)
                 }
             }
@@ -39,6 +40,7 @@ struct UsageBarRow: View {
 /// The full detail panel: header, session/weekly/model rows, footer.
 struct DetailPanelView: View {
     @ObservedObject var store: UsageStore
+    @ObservedObject var preferences: Preferences
     var onRefresh: () -> Void
     var onOpenSettings: () -> Void
 
@@ -75,21 +77,20 @@ struct DetailPanelView: View {
             Text("Loading usage…").font(.system(size: 12)).foregroundStyle(.secondary)
         default:
             if let snapshot = store.snapshot {
-                let dimmed = store.state == .stale
                 VStack(alignment: .leading, spacing: 13) {
                     UsageBarRow(title: "Session", subtitle: "5-hour window",
                                 window: snapshot.session,
                                 resetLine: "5-hour window · " + Formatting.resetCountdown(to: snapshot.session.resetsAt, now: Date()),
-                                dimmed: dimmed)
+                                theme: preferences.theme)
                     UsageBarRow(title: "Weekly", subtitle: "all models",
                                 window: snapshot.weekly,
                                 resetLine: "all models · " + Formatting.resetDate(snapshot.weekly.resetsAt),
-                                dimmed: dimmed)
+                                theme: preferences.theme)
                     ForEach(snapshot.modelWeeklies, id: \.model) { item in
                         UsageBarRow(title: "Weekly · \(item.model)", subtitle: item.model,
                                     window: item.window,
                                     resetLine: "\(item.model) only · " + Formatting.resetDate(item.window.resetsAt),
-                                    dimmed: dimmed)
+                                    theme: preferences.theme)
                     }
                 }
             }
@@ -109,6 +110,8 @@ struct DetailPanelView: View {
                 return ("📡", "Can't reach the usage service. The widget will keep retrying.")
             case .badResponse:
                 return ("⚠️", "Couldn't read usage data. The usage source returned something unexpected — the widget will keep retrying.")
+            case .noManualToken:
+                return ("🔑", "No token saved. Open Settings, choose Manual, and paste a token from `claude setup-token`.")
             }
         }()
         return HStack(alignment: .top, spacing: 8) {

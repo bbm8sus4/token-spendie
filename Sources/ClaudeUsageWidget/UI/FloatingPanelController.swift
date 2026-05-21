@@ -5,11 +5,13 @@ import SwiftUI
 @MainActor
 final class FloatingPanelController {
     private let store: UsageStore
+    private let preferences: Preferences
     private let onOpenSettings: () -> Void
     private var panel: NSPanel?
 
-    init(store: UsageStore, onOpenSettings: @escaping () -> Void) {
+    init(store: UsageStore, preferences: Preferences, onOpenSettings: @escaping () -> Void) {
         self.store = store
+        self.preferences = preferences
         self.onOpenSettings = onOpenSettings
     }
 
@@ -34,6 +36,7 @@ final class FloatingPanelController {
         panel.contentViewController = NSHostingController(
             rootView: DetailPanelView(
                 store: store,
+                preferences: preferences,
                 onRefresh: { [weak self] in Task { await self?.store.refreshNow() } },
                 onOpenSettings: { [weak self] in self?.onOpenSettings() }
             )

@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 /// Color tier for a usage percentage.
-enum UsageLevel: Equatable {
+enum UsageLevel: Hashable {
     case calm   // < 70%
     case warn   // 70% to < 90%
     case hot    // >= 90%
@@ -11,14 +11,6 @@ enum UsageLevel: Equatable {
         if percent >= 90 { return .hot }
         if percent >= 70 { return .warn }
         return .calm
-    }
-
-    var color: Color {
-        switch self {
-        case .calm: return Color(red: 0.37, green: 0.72, blue: 0.47)
-        case .warn: return Color(red: 0.88, green: 0.64, blue: 0.25)
-        case .hot:  return Color(red: 0.85, green: 0.33, blue: 0.31)
-        }
     }
 }
 

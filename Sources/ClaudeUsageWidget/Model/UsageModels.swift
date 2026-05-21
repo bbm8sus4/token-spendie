@@ -29,6 +29,7 @@ enum UsageError: Error, Equatable {
     case loginExpired           // 401 even after re-reading the Keychain
     case network                // offline / unreachable
     case badResponse            // non-200 or unparseable payload
+    case noManualToken          // manual mode selected but no token saved
 }
 
 /// What the data layer's provider/decoder can throw.
@@ -36,6 +37,7 @@ enum ProviderError: Error, Equatable {
     case unauthorized           // HTTP 401
     case network                // transport failure
     case badResponse            // non-200, or payload could not be decoded
+    case rateLimited(retryAfter: TimeInterval?)  // HTTP 429
 }
 
 /// The store's published display state.
