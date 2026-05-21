@@ -60,13 +60,13 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             popover.performClose(nil)
         } else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            store.setPanelVisible(true)
+            store.setPanelVisible(true, source: .menuBar)
         }
     }
 
     /// Fires for every close path — explicit toggle and transient click-away —
     /// so the store can restore its normal poll interval.
     nonisolated func popoverDidClose(_ notification: Notification) {
-        Task { @MainActor in store.setPanelVisible(false) }
+        Task { @MainActor in store.setPanelVisible(false, source: .menuBar) }
     }
 }

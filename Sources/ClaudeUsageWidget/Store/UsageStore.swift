@@ -3,6 +3,12 @@ import Combine
 import Network
 import AppKit
 
+/// A display surface that can hold the detail view open.
+enum PanelSource {
+    case menuBar
+    case floating
+}
+
 /// Owns polling, the data pipeline, and the published widget state.
 @MainActor
 final class UsageStore: ObservableObject {
@@ -16,7 +22,11 @@ final class UsageStore: ObservableObject {
     private let now: () -> Date
 
     private var timer: Timer?
-    private var panelVisible = false
+    /// The display surfaces currently open. The poll interval tightens while any
+    /// surface is visible, so visibility is tracked per source — closing one
+    /// surface must not slow polling while another is still open.
+    private var visiblePanels: Set<PanelSource> = []
+    private var panelVisible: Bool { !visiblePanels.isEmpty }
     private var lastSuccess: Date?
     private let pathMonitor = NWPathMonitor()
     /// Last known network reachability, used to detect reconnect transitions.
@@ -77,12 +87,15 @@ final class UsageStore: ObservableObject {
         }
     }
 
-    /// Call when the popover/floating panel opens or closes; tightens the poll interval while open.
-    func setPanelVisible(_ visible: Bool) {
-        guard visible != panelVisible else { return }
-        panelVisible = visible
+    /// Call when a display surface opens or closes; the poll interval tightens
+    /// while any surface is open. Tracked per source so closing one surface does
+    /// not slow polling while another is still visible. Idempotent per source.
+    func setPanelVisible(_ visible: Bool, source: PanelSource) {
+        let wasVisible = panelVisible
+        if visible { visiblePanels.insert(source) } else { visiblePanels.remove(source) }
+        guard panelVisible != wasVisible else { return }
         rescheduleTimer()
-        if visible { Task { await refreshNow() } }
+        if panelVisible { Task { await refreshNow() } }
     }
 
     /// Re-applies the poll interval after a preference change.
