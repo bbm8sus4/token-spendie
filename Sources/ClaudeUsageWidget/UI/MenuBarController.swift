@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Manages the menu bar status item and its detail popover.
 @MainActor
-final class MenuBarController {
+final class MenuBarController: NSObject, NSPopoverDelegate {
     private let store: UsageStore
     private let onOpenSettings: () -> Void
     private var statusItem: NSStatusItem?
@@ -12,6 +12,7 @@ final class MenuBarController {
     init(store: UsageStore, onOpenSettings: @escaping () -> Void) {
         self.store = store
         self.onOpenSettings = onOpenSettings
+        super.init()
     }
 
     /// Shows the status item. Safe to call repeatedly.
@@ -33,6 +34,7 @@ final class MenuBarController {
         button.action = #selector(togglePopover)
 
         popover.behavior = .transient
+        popover.delegate = self
         popover.contentViewController = NSHostingController(
             rootView: DetailPanelView(
                 store: store,
@@ -60,5 +62,11 @@ final class MenuBarController {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             store.setPanelVisible(true)
         }
+    }
+
+    /// Fires for every close path — explicit toggle and transient click-away —
+    /// so the store can restore its normal poll interval.
+    nonisolated func popoverDidClose(_ notification: Notification) {
+        Task { @MainActor in store.setPanelVisible(false) }
     }
 }

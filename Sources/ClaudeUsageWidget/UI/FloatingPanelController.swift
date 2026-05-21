@@ -48,5 +48,6 @@ final class FloatingPanelController {
     func hide() {
         panel?.close()
         panel = nil
+        store.setPanelVisible(false)
     }
 }
