@@ -86,13 +86,24 @@ struct PreferencesView: View {
                     ForEach(CredentialMode.allCases) { Text($0.label).tag($0) }
                 }
                 if preferences.credentialMode == .manual {
-                    Text("Run `claude setup-token` in Terminal, then paste the token below — it verifies automatically.")
+                    HStack(spacing: 5) {
+                        Image(systemName: tokenSaved ? "checkmark.circle.fill" : "exclamationmark.circle")
+                            .foregroundStyle(tokenSaved ? Color.green : Color.secondary)
+                        Text(tokenSaved ? "Token saved" : "No token saved")
+                            .font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
+                    Text("Run `claude setup-token` in Terminal, then paste the token below.")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                     SecureField("Paste token", text: $draftToken)
-                        .onChange(of: draftToken) { _ in scheduleVerify() }
-                    verifyIndicator
-                    if tokenSaved {
-                        Button("Clear") { clearToken() }
+                    HStack(spacing: 8) {
+                        Button("Save") { saveAndVerify() }
+                            .disabled(draftToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                      || verifyState == .verifying)
+                        verifyIndicator
+                        Spacer()
+                        if tokenSaved {
+                            Button("Clear") { clearToken() }
+                        }
                     }
                 }
             }
@@ -121,55 +132,53 @@ struct PreferencesView: View {
         RoundedRectangle(cornerRadius: 3).fill(color).frame(width: 14, height: 14)
     }
 
-    /// Inline state for the paste-and-verify flow.
-    private enum TokenVerifyState { case idle, verifying, verified, rejected, failed }
+    /// Inline state for the save-then-verify flow.
+    private enum TokenVerifyState: Equatable { case idle, verifying, verified, rejected, unreachable }
 
-    /// The inline spinner / result indicator under the token field.
+    /// The inline spinner / result indicator next to the Save button.
     @ViewBuilder private var verifyIndicator: some View {
         switch verifyState {
         case .idle:
             EmptyView()
         case .verifying:
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 ProgressView().controlSize(.small)
-                Text("Verifying…").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("Checking…").font(.system(size: 10)).foregroundStyle(.secondary)
             }
         case .verified:
-            Label("Verified — token saved", systemImage: "checkmark.circle.fill")
+            Label("Token works", systemImage: "checkmark.circle.fill")
                 .font(.system(size: 10)).foregroundStyle(.green)
         case .rejected:
-            Label("The server rejected this token", systemImage: "xmark.circle.fill")
+            Label("Server rejected the token", systemImage: "xmark.circle.fill")
                 .font(.system(size: 10)).foregroundStyle(.red)
-        case .failed:
-            Label("Couldn't verify — check your connection", systemImage: "exclamationmark.triangle.fill")
+        case .unreachable:
+            Label("Saved — couldn't verify yet", systemImage: "questionmark.circle")
                 .font(.system(size: 10)).foregroundStyle(.orange)
         }
     }
 
-    /// Debounced: when the token field changes, verify it against the usage
-    /// endpoint and, on success, save it. Cancels any in-flight verification.
-    private func scheduleVerify() {
-        verifyTask?.cancel()
+    /// Saves the token immediately, then checks it against the usage endpoint.
+    /// The token is saved regardless of the check result — a rate-limited or
+    /// unreachable endpoint must not block saving.
+    private func saveAndVerify() {
         let token = draftToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty else { verifyState = .idle; return }
+        guard !token.isEmpty else { return }
+        verifyTask?.cancel()
+        try? manualTokenStore.save(token: token)
+        tokenSaved = manualTokenStore.hasToken
+        draftToken = ""
         verifyState = .verifying
         verifyTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            if Task.isCancelled { return }
             do {
                 _ = try await EndpointUsageProvider().fetchUsage(accessToken: token)
                 if Task.isCancelled { return }
-                try manualTokenStore.save(token: token)
-                tokenSaved = true
                 verifyState = .verified
             } catch ProviderError.unauthorized {
                 if Task.isCancelled { return }
                 verifyState = .rejected
             } catch {
                 if Task.isCancelled { return }
-                try? manualTokenStore.save(token: token)
-                tokenSaved = manualTokenStore.hasToken
-                verifyState = .failed
+                verifyState = .unreachable
             }
         }
     }
