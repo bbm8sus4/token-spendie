@@ -37,17 +37,33 @@ struct UsageBarRow: View {
     }
 }
 
-/// The header refresh control: spins while a refresh runs, is disabled then, and
+/// Timing for the refresh icon's minimum-visible spin. A usage fetch can finish
+/// in ~100 ms — far too fast for a 1 s/turn spin to read as a spin — so once the
+/// spin starts it is held for at least one full turn.
+enum RefreshSpin {
+    /// One full turn of the icon at the spin animation's 1 s/turn rate.
+    static let minDuration: TimeInterval = 1.0
+
+    /// Seconds the spin must still run, given it began at `start`, measured at
+    /// `now`. Zero once the minimum has elapsed, or when there is no `start`.
+    static func remaining(start: Date?, now: Date) -> TimeInterval {
+        guard let start else { return 0 }
+        return max(0, minDuration - now.timeIntervalSince(start))
+    }
+}
+
+/// The header refresh control: spins while a refresh runs — held to at least one
+/// full turn so a fast fetch is still visible — is disabled while spinning, and
 /// shows a subtle rounded background on hover.
 private struct RefreshButton: View {
     @ObservedObject var store: UsageStore
     var onRefresh: () -> Void
     @State private var hovering = false
-    /// Mirrors `store.isRefreshing`. Kept as local state so the spin is driven
-    /// by a value change `.animation` — that form reliably replaces the
-    /// `repeatForever` animation when the spin stops, which an imperative
-    /// `withAnimation` does not always do on macOS 13.
+    /// Drives the spin. Set true when a refresh starts; cleared only after the
+    /// fetch finishes AND at least `RefreshSpin.minDuration` has been shown.
     @State private var spinning = false
+    /// When the current spin began — used to compute the minimum hold.
+    @State private var spinStart: Date?
 
     var body: some View {
         Button(action: onRefresh) {
@@ -62,18 +78,36 @@ private struct RefreshButton: View {
                 )
         }
         .buttonStyle(.plain)
-        .disabled(store.isRefreshing)
+        .disabled(spinning)
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .onAppear { spinning = store.isRefreshing }
-        .onChange(of: store.isRefreshing) { spinning = $0 }
+        .onAppear { if store.isRefreshing { startSpin() } }
+        .onChange(of: store.isRefreshing) { refreshing in
+            if refreshing { startSpin() } else { stopSpinAfterMinimum() }
+        }
     }
 
-    /// Continuous rotation while refreshing; a quick settle to rest when it ends.
+    /// Continuous rotation while spinning; a quick settle to rest when it ends.
     private var spinAnimation: Animation {
         spinning
             ? .linear(duration: 1).repeatForever(autoreverses: false)
             : .linear(duration: 0.2)
+    }
+
+    private func startSpin() {
+        spinStart = Date()
+        spinning = true
+    }
+
+    /// Stops the spin, but never before one full turn has been shown.
+    private func stopSpinAfterMinimum() {
+        let pending = spinStart
+        let remaining = RefreshSpin.remaining(start: pending, now: Date())
+        guard remaining > 0 else { spinning = false; return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + remaining) {
+            // Skip if a newer spin began, or another refresh is now in flight.
+            if spinStart == pending, !store.isRefreshing { spinning = false }
+        }
     }
 }
 
