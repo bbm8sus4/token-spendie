@@ -1,0 +1,141 @@
+import Foundation
+import Combine
+import Network
+import AppKit
+
+/// Owns polling, the data pipeline, and the published widget state.
+@MainActor
+final class UsageStore: ObservableObject {
+    @Published private(set) var snapshot: UsageSnapshot?
+    @Published private(set) var state: LoadState = .loading
+
+    private let provider: UsageProvider
+    private let credentials: CredentialStore
+    private let cache: SnapshotCache
+    private let preferences: Preferences
+    private let now: () -> Date
+
+    private var timer: Timer?
+    private var panelVisible = false
+    private var lastSuccess: Date?
+    private let pathMonitor = NWPathMonitor()
+    private static let panelOpenInterval: TimeInterval = 20
+
+    init(provider: UsageProvider,
+         credentials: CredentialStore,
+         cache: SnapshotCache,
+         preferences: Preferences,
+         now: @escaping () -> Date = Date.init) {
+        self.provider = provider
+        self.credentials = credentials
+        self.cache = cache
+        self.preferences = preferences
+        self.now = now
+    }
+
+    /// Loads the cached snapshot, begins polling, observes wake/network, and fires an initial fetch.
+    func start() {
+        if let cached = cache.load() {
+            snapshot = cached
+            state = .stale   // cached data is not yet confirmed live
+        }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(systemDidWake),
+            name: NSWorkspace.didWakeNotification, object: nil)
+        observeNetwork()
+        rescheduleTimer()
+        Task { await refreshNow() }
+    }
+
+    /// Performs one refresh cycle: load credentials, fetch, retry once on 401.
+    func refreshNow() async {
+        if snapshot == nil { state = .loading }
+        do {
+            let creds = try credentials.loadCredentials()
+            do {
+                apply(try await provider.fetchUsage(accessToken: creds.accessToken))
+            } catch ProviderError.unauthorized {
+                // Re-read the Keychain once — Claude Code refreshes the token during normal use.
+                let refreshed = try credentials.loadCredentials()
+                apply(try await provider.fetchUsage(accessToken: refreshed.accessToken))
+            }
+        } catch ProviderError.unauthorized {
+            state = .error(.loginExpired)
+        } catch ProviderError.network {
+            degrade(to: .network)
+        } catch ProviderError.badResponse {
+            degrade(to: .badResponse)
+        } catch CredentialError.notFound, CredentialError.malformed {
+            state = .error(.claudeCodeNotFound)
+        } catch CredentialError.accessDenied {
+            state = .error(.keychainAccessDenied)
+        } catch {
+            degrade(to: .badResponse)
+        }
+    }
+
+    /// Call when the popover/floating panel opens or closes; tightens the poll interval while open.
+    func setPanelVisible(_ visible: Bool) {
+        guard visible != panelVisible else { return }
+        panelVisible = visible
+        rescheduleTimer()
+        if visible { Task { await refreshNow() } }
+    }
+
+    /// Re-applies the poll interval after a preference change.
+    func rescheduleTimer() {
+        timer?.invalidate()
+        let interval = panelVisible ? Self.panelOpenInterval : preferences.refreshInterval.seconds
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.markStaleIfNeeded()
+                await self?.refreshNow()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    // MARK: - Private
+
+    private func apply(_ fresh: UsageSnapshot) {
+        snapshot = fresh
+        cache.save(fresh)
+        lastSuccess = now()
+        state = .ok
+    }
+
+    /// A soft failure: keep showing the cached snapshot if we have one.
+    private func degrade(to kind: UsageError) {
+        if snapshot != nil {
+            state = .stale
+        } else {
+            state = .error(kind)
+        }
+    }
+
+    /// If a refresh has not succeeded in 3x the poll interval, mark the snapshot stale.
+    private func markStaleIfNeeded() {
+        guard state == .ok, let lastSuccess else { return }
+        let threshold = preferences.refreshInterval.seconds * 3
+        if now().timeIntervalSince(lastSuccess) > threshold {
+            state = .stale
+        }
+    }
+
+    @objc private func systemDidWake() {
+        Task { await refreshNow() }
+    }
+
+    private func observeNetwork() {
+        var wasSatisfied = true
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let satisfied = path.status == .satisfied
+            defer { wasSatisfied = satisfied }
+            if satisfied && !wasSatisfied {
+                Task { @MainActor in await self?.refreshNow() }
+            }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "ClaudeUsage.network"))
+    }
+}
