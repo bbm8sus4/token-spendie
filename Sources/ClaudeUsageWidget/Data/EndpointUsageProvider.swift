@@ -1,0 +1,32 @@
+import Foundation
+
+/// Fetches usage from the dedicated `/api/oauth/usage` endpoint.
+struct EndpointUsageProvider: UsageProvider {
+    private let transport: HTTPTransport
+    private let now: () -> Date
+    private let url = URL(string: "https://api.anthropic.com/api/oauth/usage")!
+
+    init(transport: @escaping HTTPTransport = DefaultTransport.shared,
+         now: @escaping () -> Date = Date.init) {
+        self.transport = transport
+        self.now = now
+    }
+
+    func fetchUsage(accessToken: String) async throws -> UsageSnapshot {
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("ClaudeUsageWidget/1.0", forHTTPHeaderField: "User-Agent")
+
+        let (data, response) = try await transport(request)
+        switch response.statusCode {
+        case 200:
+            return try UsageDecoder.decode(data, fetchedAt: now())
+        case 401:
+            throw ProviderError.unauthorized
+        default:
+            throw ProviderError.badResponse
+        }
+    }
+}
