@@ -22,6 +22,17 @@ final class UsageStoreTests: XCTestCase {
             return try results[min(callCount, results.count - 1)].get()
         }
     }
+    /// A provider that runs a probe closure at the moment `fetchUsage` is called,
+    /// for observing store state mid-refresh.
+    final class ProbeProvider: UsageProvider {
+        var onFetch: () -> Void = {}
+        let result: Result<UsageSnapshot, Error>
+        init(_ result: Result<UsageSnapshot, Error>) { self.result = result }
+        func fetchUsage(accessToken: String) async throws -> UsageSnapshot {
+            onFetch()
+            return try result.get()
+        }
+    }
 
     private func creds() -> OAuthCredentials {
         OAuthCredentials(accessToken: "tok", refreshToken: nil, expiresAt: nil)
@@ -127,5 +138,53 @@ final class UsageStoreTests: XCTestCase {
         let callsAfter429 = provider.callCount
         await store.refreshNow()   // within the backoff window — must be skipped
         XCTAssertEqual(provider.callCount, callsAfter429, "polling is paused during backoff")
+    }
+
+    func testIsRefreshingTrueDuringFetchAndFalseAfter() async {
+        let provider = ProbeProvider(.success(snapshot(20)))
+        let store = makeStore(credentials: StubCredentials(.success(creds())),
+                              provider: provider)
+        var observedDuringFetch = false
+        provider.onFetch = { observedDuringFetch = store.isRefreshing }
+        XCTAssertFalse(store.isRefreshing, "idle before any refresh")
+        await store.refreshNow()
+        XCTAssertTrue(observedDuringFetch, "isRefreshing is true while the fetch runs")
+        XCTAssertFalse(store.isRefreshing, "isRefreshing clears after the refresh")
+    }
+
+    func testIsRefreshingClearsWhenFetchThrows() async {
+        let store = makeStore(credentials: StubCredentials(.success(creds())),
+                              provider: StubProvider([.failure(ProviderError.network)]))
+        await store.refreshNow()
+        XCTAssertFalse(store.isRefreshing, "isRefreshing clears even when the fetch fails")
+    }
+
+    func testManualRefreshIgnoresRapidRepeatCalls() async {
+        var clock = Date(timeIntervalSince1970: 0)
+        let provider = StubProvider([.success(snapshot(10)), .success(snapshot(10))])
+        let store = makeStore(credentials: StubCredentials(.success(creds())),
+                              provider: provider, now: { clock })
+        await store.manualRefresh()                       // fires
+        await store.manualRefresh()                       // within 2s gap — skipped
+        XCTAssertEqual(provider.callCount, 1, "a second manual refresh within 2s is ignored")
+        clock = Date(timeIntervalSince1970: 3)            // past the gap
+        await store.manualRefresh()                       // fires again
+        XCTAssertEqual(provider.callCount, 2, "a manual refresh after the gap runs")
+    }
+
+    func testManualRefreshSkippedDuringRateLimitBackoff() async {
+        var clock = Date(timeIntervalSince1970: 0)
+        let provider = StubProvider([.success(snapshot(30)),
+                                     .failure(ProviderError.rateLimited(retryAfter: 600))])
+        let store = makeStore(credentials: StubCredentials(.success(creds())),
+                              provider: provider, now: { clock })
+        await store.manualRefresh()                       // success
+        clock = Date(timeIntervalSince1970: 3)
+        await store.manualRefresh()                       // 429 — backoff begins
+        let callsAfter429 = provider.callCount
+        clock = Date(timeIntervalSince1970: 6)
+        await store.manualRefresh()                       // past the gap, but backoff still blocks it
+        XCTAssertEqual(provider.callCount, callsAfter429,
+                       "a manual refresh during backoff makes no request")
     }
 }

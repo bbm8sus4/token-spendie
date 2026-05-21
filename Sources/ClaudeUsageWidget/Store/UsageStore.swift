@@ -14,6 +14,9 @@ enum PanelSource {
 final class UsageStore: ObservableObject {
     @Published private(set) var snapshot: UsageSnapshot?
     @Published private(set) var state: LoadState = .loading
+    /// True while a refresh cycle is running. Drives the refresh icon's spin
+    /// animation and disables the button so it cannot be spammed.
+    @Published private(set) var isRefreshing = false
 
     private let provider: UsageProvider
     private let credentials: CredentialStore
@@ -31,6 +34,10 @@ final class UsageStore: ObservableObject {
     /// While set and in the future, polling is paused — set after an HTTP 429.
     private var backoffUntil: Date?
     private var consecutiveRateLimits = 0
+    /// Timestamp of the last user-initiated refresh. Manual refreshes within
+    /// `manualRefreshMinGap` of this are ignored, keeping the button un-spammable.
+    private var lastManualRefresh: Date?
+    private static let manualRefreshMinGap: TimeInterval = 2
     private let pathMonitor = NWPathMonitor()
     /// Last known network reachability, used to detect reconnect transitions.
     /// Main-actor isolated — only touched inside the `@MainActor` task below.
@@ -75,6 +82,8 @@ final class UsageStore: ObservableObject {
     /// Performs one refresh cycle: load credentials, fetch, retry once on 401.
     func refreshNow() async {
         if let backoffUntil, now() < backoffUntil { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
         if snapshot == nil { state = .loading }
         do {
             let creds = try credentials.loadCredentials()
@@ -100,6 +109,25 @@ final class UsageStore: ObservableObject {
         } catch {
             degrade(to: .badResponse)
         }
+    }
+
+    /// A user-initiated refresh from the refresh button. Ignored while a refresh
+    /// is already running, or if the previous manual refresh was under
+    /// `manualRefreshMinGap` seconds ago — together these keep the button
+    /// un-spammable. Other refresh triggers (timer, wake, reconnect) bypass this
+    /// and call `refreshNow()` directly.
+    func manualRefresh() async {
+        if isRefreshing { return }
+        if let lastManualRefresh,
+           now().timeIntervalSince(lastManualRefresh) < Self.manualRefreshMinGap {
+            return
+        }
+        // Stamped before the await, on purpose: the time-gap guard and the
+        // `isRefreshing` guard above are independent. A repeat call landing
+        // while this refresh is still in flight is dropped by `isRefreshing`,
+        // not the gap — both guards are needed to keep the button un-spammable.
+        lastManualRefresh = now()
+        await refreshNow()
     }
 
     /// Call when a display surface opens or closes; the poll interval tightens
