@@ -34,14 +34,20 @@ enum UsageDecoder {
                              modelWeeklies: modelWeeklies, fetchedAt: fetchedAt)
     }
 
+    /// Cached formatter — `ISO8601DateFormatter` is costly to allocate and is
+    /// safe to reuse for concurrent reads once configured.
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
     /// Parses the endpoint's ISO 8601 timestamps. The endpoint emits microsecond
     /// precision (e.g. "2026-05-21T10:20:00.431249+00:00"), which `ISO8601DateFormatter`
     /// will not accept, so the fractional-seconds component is stripped before parsing.
     static func parseDate(_ string: String) -> Date? {
         let withoutFraction = string.replacingOccurrences(
             of: #"\.\d+"#, with: "", options: .regularExpression)
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: withoutFraction)
+        return isoFormatter.date(from: withoutFraction)
     }
 }
