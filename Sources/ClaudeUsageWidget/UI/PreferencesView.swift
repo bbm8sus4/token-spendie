@@ -26,6 +26,9 @@ enum LoginItem {
 
 struct PreferencesView: View {
     @ObservedObject var preferences: Preferences
+    let manualTokenStore: ManualTokenStore
+    @State private var draftToken: String = ""
+    @State private var saveConfirmation: String = ""
     var onDisplayChanged: () -> Void
     var onIntervalChanged: () -> Void
 
@@ -71,6 +74,31 @@ struct PreferencesView: View {
                             )
                         }
                         .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("CREDENTIAL").font(.system(size: 10, weight: .heavy)).foregroundStyle(.secondary)
+                Picker("Source", selection: $preferences.credentialMode) {
+                    ForEach(CredentialMode.allCases) { Text($0.label).tag($0) }
+                }
+                if preferences.credentialMode == .manual {
+                    Text("Run `claude setup-token` in Terminal, then paste the token below.")
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                    SecureField("Paste token", text: $draftToken)
+                    HStack {
+                        Button("Save token") {
+                            do {
+                                try manualTokenStore.save(token: draftToken)
+                                draftToken = ""
+                                saveConfirmation = "Saved."
+                            } catch {
+                                saveConfirmation = "Token cannot be empty."
+                            }
+                        }
+                        Text(saveConfirmation)
+                            .font(.system(size: 10)).foregroundStyle(.secondary)
                     }
                 }
             }

@@ -66,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let view = PreferencesView(
             preferences: preferences,
+            manualTokenStore: manualTokenStore,
             onDisplayChanged: { [weak self] in self?.applyDisplayPreferences() },
             onIntervalChanged: { [weak self] in self?.store.rescheduleTimer() }
         )
