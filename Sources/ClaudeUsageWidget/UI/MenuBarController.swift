@@ -10,14 +10,17 @@ import Combine
 @MainActor
 final class MenuBarController: NSObject {
     private let store: UsageStore
+    private let preferences: Preferences
     private let onOpenSettings: () -> Void
     private var statusItem: NSStatusItem?
     private var storeObserver: AnyCancellable?
+    private var themeObserver: AnyCancellable?
     private var panel: NSPanel?
     private var clickMonitor: Any?
 
-    init(store: UsageStore, onOpenSettings: @escaping () -> Void) {
+    init(store: UsageStore, preferences: Preferences, onOpenSettings: @escaping () -> Void) {
         self.store = store
+        self.preferences = preferences
         self.onOpenSettings = onOpenSettings
         super.init()
     }
@@ -36,6 +39,9 @@ final class MenuBarController: NSObject {
         storeObserver = store.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async { self?.refreshButton() }
         }
+        themeObserver = preferences.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async { self?.refreshButton() }
+        }
     }
 
     /// Removes the status item.
@@ -43,6 +49,8 @@ final class MenuBarController: NSObject {
         closePanel()
         storeObserver?.cancel()
         storeObserver = nil
+        themeObserver?.cancel()
+        themeObserver = nil
         if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
         statusItem = nil
     }
@@ -65,7 +73,7 @@ final class MenuBarController: NSObject {
             let stale = store.state == .stale
             let color = stale
                 ? NSColor.secondaryLabelColor
-                : NSColor(UsageLevel.forPercent(percent).color)
+                : NSColor(preferences.theme.color(for: UsageLevel.forPercent(percent)))
             button.image = Self.ringImage(percent: percent, color: color)
             button.title = " \(Int(percent.rounded()))%"
         }
@@ -111,6 +119,7 @@ final class MenuBarController: NSObject {
 
         let content = DetailPanelView(
             store: store,
+            preferences: preferences,
             onRefresh: { [weak self] in Task { await self?.store.refreshNow() } },
             onOpenSettings: { [weak self] in
                 self?.closePanel()

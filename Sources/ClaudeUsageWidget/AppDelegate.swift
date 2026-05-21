@@ -19,8 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             cache: SnapshotCache(fileURL: SnapshotCache.defaultURL()),
             preferences: preferences
         )
-        menuBar = MenuBarController(store: store, onOpenSettings: { [weak self] in self?.showSettings() })
-        floatingPanel = FloatingPanelController(store: store, onOpenSettings: { [weak self] in self?.showSettings() })
+        menuBar = MenuBarController(store: store, preferences: preferences,
+                                   onOpenSettings: { [weak self] in self?.showSettings() })
+        floatingPanel = FloatingPanelController(store: store, preferences: preferences,
+                                               onOpenSettings: { [weak self] in self?.showSettings() })
 
         applyDisplayPreferences()
         store.start()
