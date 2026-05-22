@@ -14,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         preferences = Preferences()
         store = UsageStore(
-            providers: [ClaudeProvider()],
+            providers: [ClaudeProvider(), GeminiProvider()],
             preferences: preferences
         )
         menuBar = MenuBarController(store: store, preferences: preferences,
