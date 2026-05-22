@@ -69,7 +69,7 @@ struct LabeledWindow: Codable, Equatable {
 }
 
 /// One complete reading of a provider's usage, normalized for the panel.
-/// `windows` is the full native list and includes the `headline` window.
+/// `windows` is the full native list and should include the `headline` window.
 struct ProviderSnapshot: Codable, Equatable {
     let id: ProviderID
     let plan: String?               // best-effort; nil hides the plan pill

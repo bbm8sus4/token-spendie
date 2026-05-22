@@ -21,7 +21,9 @@ final class ProviderModelsTests: XCTestCase {
             id: .claude,
             plan: "Max",
             headline: labeled("Session · 5h", 47),
-            windows: [labeled("Session · 5h", 47), labeled("Weekly · all", 31)],
+            windows: [labeled("Session · 5h", 47),
+                      LabeledWindow(label: "Weekly · all", detail: "all models",
+                                    resetStyle: .date, window: window(31))],
             fetchedAt: Date(timeIntervalSince1970: 5_000)
         )
         let data = try JSONEncoder().encode(snapshot)
@@ -38,10 +40,16 @@ final class ProviderModelsTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(ProviderSnapshot.self, from: data), snapshot)
     }
 
-    func testProviderUsageCarriesStateWithoutSnapshot() {
-        let usage = ProviderUsage(id: .claude, displayName: "Claude",
+    func testProviderUsageStateIsMutable() {
+        var usage = ProviderUsage(id: .claude, displayName: "Claude",
                                   state: .loading, snapshot: nil)
-        XCTAssertEqual(usage.state, .loading)
-        XCTAssertNil(usage.snapshot)
+        usage.state = .ok
+        XCTAssertEqual(usage.state, .ok)
+    }
+
+    func testProviderUsageEquatableDistinguishesByState() {
+        let a = ProviderUsage(id: .claude, displayName: "Claude", state: .loading, snapshot: nil)
+        let b = ProviderUsage(id: .claude, displayName: "Claude", state: .ok, snapshot: nil)
+        XCTAssertNotEqual(a, b)
     }
 }
