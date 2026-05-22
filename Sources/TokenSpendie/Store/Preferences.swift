@@ -1,21 +1,6 @@
 import Foundation
 import Combine
 
-/// Which credential source the widget uses.
-enum CredentialMode: String, CaseIterable, Identifiable {
-    case auto
-    case manual
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .auto:   return "Claude Code Keychain"
-        case .manual: return "Manual token"
-        }
-    }
-}
-
 /// How often the widget polls. 60 seconds is the floor — the usage endpoint
 /// rate-limits aggressively, so faster polling is not offered.
 enum RefreshInterval: Int, CaseIterable, Identifiable {
@@ -42,7 +27,6 @@ final class Preferences: ObservableObject {
     @Published var refreshInterval: RefreshInterval { didSet { defaults.set(refreshInterval.rawValue, forKey: Keys.refreshInterval) } }
     @Published var launchAtLogin: Bool { didSet { defaults.set(launchAtLogin, forKey: Keys.launchAtLogin) } }
     @Published var theme: Theme { didSet { defaults.set(theme.rawValue, forKey: Keys.theme) } }
-    @Published var credentialMode: CredentialMode { didSet { defaults.set(credentialMode.rawValue, forKey: Keys.credentialMode) } }
 
     private enum Keys {
         static let showMenuBar = "showMenuBar"
@@ -50,7 +34,6 @@ final class Preferences: ObservableObject {
         static let refreshInterval = "refreshInterval"
         static let launchAtLogin = "launchAtLogin"
         static let theme = "theme"
-        static let credentialMode = "credentialMode"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -62,7 +45,5 @@ final class Preferences: ObservableObject {
         self.launchAtLogin = defaults.object(forKey: Keys.launchAtLogin) as? Bool ?? false
         let storedTheme = defaults.string(forKey: Keys.theme)
         self.theme = storedTheme.flatMap(Theme.init(rawValue:)) ?? .default
-        let storedMode = defaults.string(forKey: Keys.credentialMode)
-        self.credentialMode = storedMode.flatMap(CredentialMode.init(rawValue:)) ?? .auto
     }
 }
