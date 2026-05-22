@@ -29,8 +29,8 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 echo "==> Stamping version $VERSION"
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString '$VERSION'" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion '$VERSION'" "$APP/Contents/Info.plist"
 
 echo "==> Ad-hoc signing"
 codesign --force --sign - "$APP"
