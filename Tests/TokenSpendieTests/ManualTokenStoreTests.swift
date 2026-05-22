@@ -1,9 +1,9 @@
 import XCTest
-@testable import ClaudeUsageWidget
+@testable import TokenSpendie
 
 final class ManualTokenStoreTests: XCTestCase {
     private func testStore() -> ManualTokenStore {
-        ManualTokenStore(service: "ClaudeUsageWidget-Test-\(UUID().uuidString)")
+        ManualTokenStore(service: "TokenSpendie-Test-\(UUID().uuidString)")
     }
 
     func testSaveThenLoadRoundTrips() throws {

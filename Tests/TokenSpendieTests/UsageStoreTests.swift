@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsageWidget
+@testable import TokenSpendie
 
 @MainActor
 final class UsageStoreTests: XCTestCase {

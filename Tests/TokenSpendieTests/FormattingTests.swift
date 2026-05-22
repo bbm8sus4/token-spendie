@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsageWidget
+@testable import TokenSpendie
 
 final class FormattingTests: XCTestCase {
     func testLevelTiers() {

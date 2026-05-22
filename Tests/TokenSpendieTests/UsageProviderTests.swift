@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsageWidget
+@testable import TokenSpendie
 
 final class UsageProviderTests: XCTestCase {
     private func http(_ status: Int) -> HTTPURLResponse {

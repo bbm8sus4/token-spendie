@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsageWidget
+@testable import TokenSpendie
 
 final class UsageDecoderTests: XCTestCase {
     let fetchedAt = Date(timeIntervalSince1970: 1_700_000_000)

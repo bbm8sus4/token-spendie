@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsageWidget
+@testable import TokenSpendie
 
 final class UsageModelsTests: XCTestCase {
     func testSnapshotCodableRoundTrip() throws {

@@ -1,9 +1,9 @@
 import XCTest
-@testable import ClaudeUsageWidget
+@testable import TokenSpendie
 
 final class KeychainReaderTests: XCTestCase {
     func testMissingItemThrowsNotFound() {
-        let reader = KeychainReader(service: "ClaudeUsageWidget-NoSuchItem-\(UUID().uuidString)")
+        let reader = KeychainReader(service: "TokenSpendie-NoSuchItem-\(UUID().uuidString)")
         XCTAssertThrowsError(try reader.loadCredentials()) { error in
             XCTAssertEqual(error as? CredentialError, .notFound)
         }

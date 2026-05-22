@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClaudeUsageWidget",
+    name: "TokenSpendie",
     platforms: [.macOS(.v13)],
     targets: [
-        .executableTarget(name: "ClaudeUsageWidget", path: "Sources/ClaudeUsageWidget"),
+        .executableTarget(name: "TokenSpendie", path: "Sources/TokenSpendie"),
         .testTarget(
-            name: "ClaudeUsageWidgetTests",
-            dependencies: ["ClaudeUsageWidget"],
-            path: "Tests/ClaudeUsageWidgetTests"
+            name: "TokenSpendieTests",
+            dependencies: ["TokenSpendie"],
+            path: "Tests/TokenSpendieTests"
         ),
     ]
 )
