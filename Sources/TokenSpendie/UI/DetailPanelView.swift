@@ -52,6 +52,20 @@ enum RefreshSpin {
     }
 }
 
+/// Drives the "fetching…" ellipsis: a dot count that cycles 1 → 2 → 3 as the
+/// `TimelineView` ticks, so the text reads "fetching." → "fetching.." →
+/// "fetching..." while a refresh runs.
+enum FetchingEllipsis {
+    /// Seconds between dot-count changes — the `TimelineView` tick interval.
+    static let period: TimeInterval = 0.4
+
+    /// Dot count (1...3) for a given timeline tick.
+    static func dotCount(at date: Date) -> Int {
+        let ticks = Int(date.timeIntervalSinceReferenceDate / period)
+        return ticks % 3 + 1
+    }
+}
+
 /// The header refresh control: spins while a refresh runs — held to at least one
 /// full turn so a fast fetch is still visible — is disabled while spinning, and
 /// shows a subtle rounded background on hover.
