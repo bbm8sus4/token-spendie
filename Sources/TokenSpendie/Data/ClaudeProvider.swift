@@ -7,7 +7,7 @@ import Foundation
 /// `ProviderSnapshot`.
 struct ClaudeProvider: UsageProvider {
     let id: ProviderID = .claude
-    let displayName = "Claude"
+    let displayName: String = "Claude"
 
     private let credentials: CredentialStore
     private let endpoint: ClaudeUsageEndpoint

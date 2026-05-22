@@ -23,6 +23,10 @@ final class ClaudeProviderTests: XCTestCase {
         var callCount = 0
         init(_ results: [Result<UsageSnapshot, Error>]) { self.results = results }
         func fetchUsage(accessToken: String) async throws -> UsageSnapshot {
+            guard !results.isEmpty else {
+                XCTFail("StubEndpoint.fetchUsage called with no configured results")
+                throw ProviderError.badResponse
+            }
             defer { callCount += 1 }
             return try results[min(callCount, results.count - 1)].get()
         }
@@ -101,14 +105,15 @@ final class ClaudeProviderTests: XCTestCase {
     }
 
     func testFetchUsagePropagatesCredentialError() async {
-        let provider = ClaudeProvider(
-            credentials: StubCredentials(.failure(CredentialError.notFound)),
-            endpoint: StubEndpoint([]))
+        let credentials = StubCredentials(.failure(CredentialError.notFound))
+        let provider = ClaudeProvider(credentials: credentials,
+                                      endpoint: StubEndpoint([]))
         do {
             _ = try await provider.fetchUsage()
             XCTFail("expected notFound")
         } catch {
             XCTAssertEqual(error as? CredentialError, .notFound)
         }
+        XCTAssertEqual(credentials.loadCount, 1, "credential failure is not retried")
     }
 }
