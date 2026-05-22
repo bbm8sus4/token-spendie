@@ -47,9 +47,10 @@ enum LoadState: Equatable {
     case error(UsageError)      // no usable snapshot to show
 }
 
-/// Identifies an AI CLI the widget can track. Phase 2 adds `.gemini`.
+/// Identifies an AI CLI the widget can track.
 enum ProviderID: String, Codable, CaseIterable, Equatable {
     case claude
+    case gemini
 }
 
 /// How a window's `resetsAt` is rendered in the panel.
