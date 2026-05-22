@@ -88,4 +88,12 @@ final class GeminiProviderTests: XCTestCase {
             now: Date(timeIntervalSince1970: 0))
         XCTAssertEqual(snapshot.headline.detail, "≈420 of 1000 requests")
     }
+
+    func testConvertMarksSnapshotAsAnEstimate() {
+        let snapshot = GeminiProvider.convert(
+            count: 1,
+            resetsAt: Date(timeIntervalSince1970: 0),
+            now: Date(timeIntervalSince1970: 0))
+        XCTAssertEqual(snapshot.note, "estimate · counted from local logs")
+    }
 }

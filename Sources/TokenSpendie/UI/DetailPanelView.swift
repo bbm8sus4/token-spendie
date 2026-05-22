@@ -7,6 +7,8 @@ struct UsageBarRow: View {
     let window: UsageWindow
     let resetLine: String
     var theme: Theme
+    /// An optional data-quality note rendered snug under the reset line.
+    var caption: String? = nil
 
     private var level: UsageLevel { UsageLevel.forPercent(window.percent) }
     private var tierColor: Color { theme.color(for: level) }
@@ -33,6 +35,11 @@ struct UsageBarRow: View {
             Text(resetLine)
                 .font(.system(size: 10))
                 .foregroundStyle(Color.secondary)
+            if let caption {
+                Text(caption)
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color.secondary.opacity(0.8))
+            }
         }
     }
 }
@@ -313,7 +320,9 @@ private struct ProviderSection: View {
                                     subtitle: labeled.detail,
                                     window: labeled.window,
                                     resetLine: resetLine(for: labeled),
-                                    theme: theme)
+                                    theme: theme,
+                                    caption: index == snapshot.windows.count - 1
+                                        ? snapshot.note : nil)
                     }
                 }
             }

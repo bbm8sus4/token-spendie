@@ -77,6 +77,9 @@ struct ProviderSnapshot: Codable, Equatable {
     let headline: LabeledWindow     // drives the ring + collapsed-row %
     let windows: [LabeledWindow]
     let fetchedAt: Date
+    /// A short data-quality note shown under the section; nil hides it. Used
+    /// by providers whose numbers are estimates rather than exact readings.
+    var note: String? = nil
 }
 
 /// One panel row's complete state. Reuses `LoadState` as the per-provider

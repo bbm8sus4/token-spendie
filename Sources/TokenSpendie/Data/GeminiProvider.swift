@@ -40,6 +40,7 @@ struct GeminiProvider: UsageProvider {
                                   resetStyle: .countdown,
                                   window: window)
         return ProviderSnapshot(id: .gemini, plan: nil, headline: daily,
-                                windows: [daily], fetchedAt: now)
+                                windows: [daily], fetchedAt: now,
+                                note: "estimate · counted from local logs")
     }
 }
