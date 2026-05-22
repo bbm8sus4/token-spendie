@@ -9,7 +9,7 @@ Requires the Swift toolchain (Xcode Command Line Tools). No Xcode needed.
 
     ./build.sh
 
-This produces `build/TokenSpendie.app` and `build/TokenSpendie.zip`.
+This produces `build/TokenSpendie.app`.
 
 ## Install
 
@@ -28,7 +28,7 @@ Homebrew installs the app with no Gatekeeper prompts.
    double-click. Either **right-click the `.pkg` → Open**, or open
    **System Settings → Privacy & Security**, scroll down, and click
    **Open Anyway**. This happens once, on the installer itself.
-3. The installer places `Token Spendie.app` in `/Applications`. The installed
+3. The installer places `TokenSpendie.app` in `/Applications`. The installed
    app launches normally — no further prompts.
 4. On first launch, when macOS asks for Keychain access, choose **Allow** — the
    widget reads your Claude Code login token to fetch usage.
