@@ -149,9 +149,9 @@ private struct RefreshIndicator: View {
     private var statusText: some View {
         switch RefreshStatusResolver.resolve(
             isFetching: spinning,
-            snapshotFetchedAt: store.snapshot?.fetchedAt,
-            rateLimitedUntil: store.rateLimitedUntil,
-            isStale: store.state == .stale,
+            snapshotFetchedAt: store.menuBarProvider?.snapshot?.fetchedAt,
+            rateLimitedUntil: store.menuBarProvider.flatMap { store.rateLimitedUntil(for: $0.id) },
+            isStale: store.menuBarProvider?.state == .stale,
             now: Date()
         ) {
         case .idle:
@@ -294,32 +294,44 @@ struct DetailPanelView: View {
         .padding(.horizontal, 10).padding(.vertical, 6)
     }
 
+    /// Builds a row's reset line from a `LabeledWindow`, computed live so the
+    /// countdown stays current.
+    private func resetLine(for labeled: LabeledWindow) -> String {
+        let reset: String
+        switch labeled.resetStyle {
+        case .countdown:
+            reset = Formatting.resetCountdown(to: labeled.window.resetsAt, now: Date())
+        case .date:
+            reset = Formatting.resetDate(labeled.window.resetsAt)
+        }
+        return reset.isEmpty ? labeled.detail : "\(labeled.detail) · \(reset)"
+    }
+
     @ViewBuilder
     private var content: some View {
-        switch store.state {
-        case .error(let kind):
-            messageView(for: kind)
-        case .loading where store.snapshot == nil:
-            Text("Loading usage…").font(.system(size: 12)).foregroundStyle(.secondary)
-        default:
-            if let snapshot = store.snapshot {
-                VStack(alignment: .leading, spacing: 13) {
-                    UsageBarRow(title: "Session", subtitle: "5-hour window",
-                                window: snapshot.session,
-                                resetLine: "5-hour window · " + Formatting.resetCountdown(to: snapshot.session.resetsAt, now: Date()),
-                                theme: preferences.theme)
-                    UsageBarRow(title: "Weekly", subtitle: "all models",
-                                window: snapshot.weekly,
-                                resetLine: "all models · " + Formatting.resetDate(snapshot.weekly.resetsAt),
-                                theme: preferences.theme)
-                    ForEach(snapshot.modelWeeklies, id: \.model) { item in
-                        UsageBarRow(title: "Weekly · \(item.model)", subtitle: item.model,
-                                    window: item.window,
-                                    resetLine: "\(item.model) only · " + Formatting.resetDate(item.window.resetsAt),
-                                    theme: preferences.theme)
+        if let provider = store.menuBarProvider {
+            switch provider.state {
+            case .error(let kind):
+                messageView(for: kind)
+            case .loading where provider.snapshot == nil:
+                Text("Loading usage…").font(.system(size: 12)).foregroundStyle(.secondary)
+            default:
+                if let snapshot = provider.snapshot {
+                    VStack(alignment: .leading, spacing: 13) {
+                        ForEach(snapshot.windows.indices, id: \.self) { index in
+                            let labeled = snapshot.windows[index]
+                            UsageBarRow(title: labeled.label,
+                                        subtitle: labeled.detail,
+                                        window: labeled.window,
+                                        resetLine: resetLine(for: labeled),
+                                        theme: preferences.theme)
+                        }
                     }
                 }
             }
+        } else {
+            // No provider detected — same message as the old `claudeCodeNotFound`.
+            messageView(for: .claudeCodeNotFound)
         }
     }
 
