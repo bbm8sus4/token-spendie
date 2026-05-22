@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Builds ClaudeUsage.app and a shareable zip.
+# Builds TokenSpendie.app and a shareable zip.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP="build/ClaudeUsage.app"
-BIN_NAME="ClaudeUsageWidget"
+APP="build/TokenSpendie.app"
+BIN_NAME="TokenSpendie"
 
 echo "==> Compiling (release)"
 swift build -c release
@@ -27,6 +27,6 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 echo "==> Zipping for sharing"
-( cd build && rm -f ClaudeUsage.zip && ditto -c -k --keepParent ClaudeUsage.app ClaudeUsage.zip )
+( cd build && rm -f TokenSpendie.zip && ditto -c -k --keepParent TokenSpendie.app TokenSpendie.zip )
 
-echo "==> Done: $APP  and  build/ClaudeUsage.zip"
+echo "==> Done: $APP  and  build/TokenSpendie.zip"
