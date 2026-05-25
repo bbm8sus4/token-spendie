@@ -300,12 +300,30 @@ private func panelMessage(for kind: UsageError) -> some View {
 private struct ProviderSection: View {
     let provider: ProviderUsage
     var theme: Theme
+    /// True while a usage fetch is running — makes the mascot jitter.
+    var isRefreshing: Bool = false
+
+    private var headlinePercent: Double { provider.snapshot?.headline.window.percent ?? 0 }
+
+    /// Mascot tint: the headline window's tier color, so the little robot
+    /// glows green/amber/red in step with usage. Falls back to a calm tint
+    /// before the first snapshot arrives.
+    private var mascotColor: Color {
+        theme.color(for: UsageLevel.forPercent(headlinePercent))
+    }
+
+    /// Hot tier drives the ear wiggle.
+    private var isHot: Bool { UsageLevel.forPercent(headlinePercent) == .hot }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
-            Text(provider.displayName.uppercased())
-                .font(.system(size: 10, weight: .heavy)).kerning(0.5)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                ProviderMascot(color: mascotColor, shaking: isRefreshing, hot: isHot)
+                    .frame(width: 28, height: 32)
+                Text(provider.displayName.uppercased())
+                    .font(.system(size: 10, weight: .heavy)).kerning(0.5)
+                    .foregroundStyle(.secondary)
+            }
             switch provider.state {
             case .error(let kind):
                 panelMessage(for: kind)
@@ -381,7 +399,8 @@ struct DetailPanelView: View {
             panelMessage(for: .claudeCodeNotFound).padding(13)
         } else {
             ForEach(Array(store.providers.enumerated()), id: \.element.id) { index, provider in
-                ProviderSection(provider: provider, theme: preferences.theme)
+                ProviderSection(provider: provider, theme: preferences.theme,
+                                isRefreshing: store.isRefreshing)
                     .padding(13)
                 if index < store.providers.count - 1 {
                     Divider()
