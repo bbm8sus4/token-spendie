@@ -317,9 +317,9 @@ private struct ProviderSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 ProviderMascot(color: mascotColor, shaking: isRefreshing, hot: isHot)
-                    .frame(width: 28, height: 32)
+                    .frame(width: 40, height: 46)
                 Text(provider.displayName.uppercased())
                     .font(.system(size: 10, weight: .heavy)).kerning(0.5)
                     .foregroundStyle(.secondary)

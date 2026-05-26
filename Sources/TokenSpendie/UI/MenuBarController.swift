@@ -80,38 +80,15 @@ final class MenuBarController: NSObject {
         default:
             let percent = provider.snapshot?.headline.window.percent ?? 0
             let color = NSColor(preferences.theme.color(for: UsageLevel.forPercent(percent)))
-            button.image = Self.ringImage(percent: percent, color: color)
+            button.image = Self.mascotImage(color: color)
             button.title = " \(Int(percent.rounded()))%"
         }
     }
 
-    /// Draws the session ring as a small image for the status button.
-    private static func ringImage(percent: Double, color: NSColor,
-                                  diameter: CGFloat = 15, lineWidth: CGFloat = 3) -> NSImage {
-        let image = NSImage(size: NSSize(width: diameter, height: diameter))
-        image.lockFocus()
-        let center = NSPoint(x: diameter / 2, y: diameter / 2)
-        let radius = (diameter - lineWidth) / 2
-
-        let track = NSBezierPath()
-        track.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
-        track.lineWidth = lineWidth
-        NSColor.tertiaryLabelColor.setStroke()
-        track.stroke()
-
-        let fraction = min(max(percent / 100, 0), 1)
-        if fraction > 0 {
-            let progress = NSBezierPath()
-            progress.appendArc(withCenter: center, radius: radius,
-                               startAngle: 90, endAngle: 90 - 360 * fraction, clockwise: true)
-            progress.lineWidth = lineWidth
-            progress.lineCapStyle = .round
-            color.setStroke()
-            progress.stroke()
-        }
-        image.unlockFocus()
-        image.isTemplate = false
-        return image
+    /// The mascot, sized for the status bar and tinted by the usage tier.
+    private static func mascotImage(color: NSColor, height: CGFloat = 16) -> NSImage {
+        MascotImage.image(size: NSSize(width: height * MascotImage.aspect, height: height),
+                          bodyColor: color, eyeWidthScale: 0.75)
     }
 
     // MARK: - Dropdown panel
