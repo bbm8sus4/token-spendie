@@ -287,6 +287,8 @@ private func panelMessage(for kind: UsageError) -> some View {
             return ("📡", "Can't reach the usage service. The widget will keep retrying.")
         case .badResponse:
             return ("⚠️", "Couldn't read usage data. The usage source returned something unexpected — the widget will keep retrying.")
+        case .rateLimited:
+            return ("⏳", "Rate limited by the usage API. The widget will retry automatically — sit tight.")
         }
     }()
     return HStack(alignment: .top, spacing: 8) {

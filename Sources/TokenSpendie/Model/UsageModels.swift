@@ -29,6 +29,7 @@ enum UsageError: Error, Equatable {
     case loginExpired           // 401 even after re-reading the Keychain
     case network                // offline / unreachable
     case badResponse            // non-200 or unparseable payload
+    case rateLimited            // 429 with no cached snapshot to show
 }
 
 /// What the data layer's provider/decoder can throw.

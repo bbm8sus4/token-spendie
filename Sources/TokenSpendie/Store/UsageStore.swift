@@ -204,7 +204,7 @@ final class UsageStore: ObservableObject {
         let steps: [TimeInterval] = [120, 300, 900]
         let fallback = steps[min(count - 1, steps.count - 1)]
         backoffUntil[id] = now().addingTimeInterval(retryAfter ?? fallback)
-        degrade(to: .badResponse, for: id)
+        degrade(to: .rateLimited, for: id)
     }
 
     /// Marks a provider's snapshot stale if no refresh has succeeded in 3x the
