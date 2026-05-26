@@ -22,9 +22,9 @@ enum Theme: String, CaseIterable, Identifiable {
     private var tierColors: (calm: Color, warn: Color, hot: Color) {
         switch self {
         case .default:
-            return (Color(red: 0.373, green: 0.722, blue: 0.471),
-                    Color(red: 0.878, green: 0.635, blue: 0.247),
-                    Color(red: 0.851, green: 0.325, blue: 0.310))
+            return (Color(red: 0.851, green: 0.467, blue: 0.341),
+                    Color(red: 0.906, green: 0.306, blue: 0.225),
+                    Color(red: 0.800, green: 0.180, blue: 0.180))
         case .ocean:
             return (Color(red: 0.208, green: 0.753, blue: 0.651),
                     Color(red: 0.941, green: 0.741, blue: 0.353),
